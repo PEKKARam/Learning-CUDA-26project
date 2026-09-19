@@ -45,6 +45,6 @@ python3 tools/generate_test_data.py inspect results/demo_dequant.qdat
 
 ## 当前范围
 
-第一版实现 nearest ties-to-even、block/tensor scaling、尾块、奇数 FP4 打包和
-NaN/Inf 的确定性处理。`stochastic` 字段已保留，但配置校验会明确拒绝它；当前
-benchmark 报告 CUDA event 的多次平均值，不是 p10/median/p90。详见报告的限制章节。
+第一版实现 nearest ties-to-even、基于固定 seed 的 stochastic rounding、block/tensor
+scaling、尾块、奇数 FP4 打包和 NaN/Inf 的确定性处理。当前 benchmark 报告 CUDA event
+的多次平均值，不是 p10/median/p90。详见报告的限制章节。

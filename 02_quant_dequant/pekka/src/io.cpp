@@ -222,7 +222,8 @@ QuantizedData read_qlow(const std::filesystem::path &path) {
        header.original_dtype != static_cast<std::uint8_t>(DataType::kBf16)) ||
       (header.scale_mode != static_cast<std::uint8_t>(ScaleMode::kTensor) &&
        header.scale_mode != static_cast<std::uint8_t>(ScaleMode::kBlock)) ||
-      header.rounding != static_cast<std::uint8_t>(Rounding::kNearest) ||
+      (header.rounding != static_cast<std::uint8_t>(Rounding::kNearest) &&
+       header.rounding != static_cast<std::uint8_t>(Rounding::kStochastic)) ||
       header.rows == 0 || header.cols == 0 || header.block_size == 0 ||
       header.rows > std::numeric_limits<std::uint64_t>::max() / header.cols) {
     throw std::runtime_error("QLOW metadata contains an unsupported value");

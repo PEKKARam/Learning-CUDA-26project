@@ -119,6 +119,64 @@ QD_HD inline float uniform01(std::uint64_t seed, std::uint64_t index) {
   return static_cast<float>((x >> 40U) * (1.0 / 16777216.0));
 }
 
+// Stochastic variants use the same ordered representable set as nearest
+// encoding, then choose the upper neighbor with probability proportional to
+// the input's position between the two neighbors. The counter-based random
+// value makes CPU and GPU results reproducible for a fixed seed and index.
+QD_HD inline std::uint8_t encode_e4m3_stochastic(float value,
+                                                  std::uint64_t seed,
+                                                  std::uint64_t index) {
+  if (is_nan(value)) return 0;
+  const bool negative = std::signbit(value);
+  const float magnitude = std::fabs(value);
+  if (!std::isfinite(magnitude) || magnitude >= 448.0F) {
+    return static_cast<std::uint8_t>((negative ? 0x80U : 0U) | 0x7EU);
+  }
+  std::uint8_t lower = 0;
+  std::uint8_t upper = 0x7E;
+  for (int code = 0; code <= 0x7E; ++code) {
+    const float candidate = decode_e4m3(static_cast<std::uint8_t>(code));
+    if (candidate <= magnitude) lower = static_cast<std::uint8_t>(code);
+    if (candidate >= magnitude) {
+      upper = static_cast<std::uint8_t>(code);
+      break;
+    }
+  }
+  if (lower == upper) return static_cast<std::uint8_t>(lower | (negative ? 0x80U : 0U));
+  const float lo = decode_e4m3(lower);
+  const float hi = decode_e4m3(upper);
+  const float probability = (magnitude - lo) / (hi - lo);
+  const std::uint8_t selected = uniform01(seed, index) < probability ? upper : lower;
+  return static_cast<std::uint8_t>(selected | (negative ? 0x80U : 0U));
+}
+
+QD_HD inline std::uint8_t encode_e2m1_stochastic(float value,
+                                                  std::uint64_t seed,
+                                                  std::uint64_t index) {
+  if (is_nan(value)) return 0;
+  const bool negative = std::signbit(value);
+  const float magnitude = std::fabs(value);
+  if (!std::isfinite(magnitude) || magnitude >= 6.0F) {
+    return static_cast<std::uint8_t>((negative ? 0x08U : 0U) | 0x07U);
+  }
+  std::uint8_t lower = 0;
+  std::uint8_t upper = 7;
+  for (int code = 0; code <= 7; ++code) {
+    const float candidate = decode_e2m1(static_cast<std::uint8_t>(code));
+    if (candidate <= magnitude) lower = static_cast<std::uint8_t>(code);
+    if (candidate >= magnitude) {
+      upper = static_cast<std::uint8_t>(code);
+      break;
+    }
+  }
+  if (lower == upper) return static_cast<std::uint8_t>(lower | (negative ? 0x08U : 0U));
+  const float lo = decode_e2m1(lower);
+  const float hi = decode_e2m1(upper);
+  const float probability = (magnitude - lo) / (hi - lo);
+  const std::uint8_t selected = uniform01(seed, index) < probability ? upper : lower;
+  return static_cast<std::uint8_t>(selected | (negative ? 0x08U : 0U));
+}
+
 } // namespace qd::formats
 
 #undef QD_HD

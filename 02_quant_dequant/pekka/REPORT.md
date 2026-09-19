@@ -17,7 +17,7 @@ QLOW → QLOW reload/checksum → CUDA unpack/dequantize → FP16/BF16/FP32 QDAT
 |MXFP8|OCP E4M3FN，最大有限值 448，每 32 元素一个 E8M0 scale|
 |NVFP4|E2M1（`0,.5,1,1.5,2,3,4,6`），每 16 元素一个 E4M3 local scale + FP32 tensor scale|
 |scale mode|block 或 tensor；tensor 对整张矩阵只生成一组 local scale|
-|舍入|nearest、ties-to-even；stochastic 字段保留但 v1 明确拒绝执行|
+|舍入|nearest ties-to-even，或使用 seed+元素 index 的可复现 stochastic rounding|
 |非有限|amax 忽略 NaN/Inf；NaN→0；Inf 饱和到同符号最大有限值|
 |尾块|只扫描有效元素；奇数 FP4 最后 byte 的高 nibble 清零|
 
@@ -69,14 +69,14 @@ payload 宽度，`to_string` 函数供 JSON/CLI 使用。`config.hpp`、`io.hpp`
 `metrics.hpp`、`cuda_ops.hpp` 分别声明配置、I/O、CPU reference、指标和 GPU API。
 
 `include/qd/formats.cuh` 是 CPU/CUDA 共用规则：`decode_e4m3/decode_e2m1/decode_e8m0` 解码；
-`encode_e4m3/encode_e2m1` 处理饱和、NaN 和 ties-to-even；`encode_e8m0_ceil` 选择不小于理想
-scale 的二次幂；`is_nan` 是 host/device NaN 判定；`uniform01` 是为未来 stochastic
-rounding 保留的 seed+index counter hash。
+`encode_e4m3/encode_e2m1` 处理饱和、NaN 和 ties-to-even；两个 stochastic encoder 在相邻
+可表示值之间按距离比例选择；`encode_e8m0_ceil` 选择不小于理想 scale 的二次幂；`is_nan`
+是 host/device NaN 判定；`uniform01` 是 seed+index counter hash。
 
 ### CPU、I/O 与 CLI
 
 `src/config.cpp` 的 `trim/unquote` 处理简单 TOML 文本，`read_config` 转换字段并报告错误，
-`validate_config` 固定 block size 并拒绝 stochastic。`src/io.cpp` 的 `half_to_float` 显式
+`validate_config` 固定 block size 并校验 rounding 枚举。`src/io.cpp` 的 `half_to_float` 显式
 处理 FP16 normal/subnormal/Inf/NaN；`read_qdat/write_qdat` 负责 QDAT；`align16`、
 `fnv1a`、`write_padding` 是 QLOW 辅助；`qlow_file_size` 计算真实文件大小；`write_qlow`
 写 header/sections，`read_qlow` 执行完整协议验证。
@@ -133,9 +133,9 @@ smoke，再覆盖 MXFP8/NVFP4 的 block/tensor 与 FP16/BF16/FP32 输出。
 
 ## 7. 限制与后续
 
-当前只实现 E4M3FN、不实现 E5M2；stochastic rounding 仅保留接口；benchmark 报告多次平均
-而非 p10/median/p90；尚未提交正式 ncu/nsys/compute-sanitizer profile。后续推荐顺序是：
-先用 golden vectors 实现 stochastic，再把 E4M3 枚举 encoder 换成常数时间位运算并保留
+当前只实现 E4M3FN、不实现 E5M2；benchmark 报告多次平均而非 p10/median/p90；尚未提交
+正式 ncu/nsys/compute-sanitizer profile。后续推荐顺序是：先用更多 golden vectors 扩充
+stochastic 覆盖，再把 E4M3 枚举 encoder 换成常数时间位运算并保留
 exhaustive tests，最后根据 profiler 证据做 warp reduction、vectorized load、kernel fusion。
 QLOW 的 FNV-1a 只用于损坏检测，不提供密码学完整性；大 shape 仍一次性分配 host/device buffer。
 

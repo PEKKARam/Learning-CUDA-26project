@@ -60,7 +60,11 @@ QuantizedData quantize_reference(const Matrix &matrix, const Config &config) {
     for (std::size_t index = 0; index < count; ++index) {
       const float scale = formats::decode_e8m0(output.local_scales[
           config.scale_mode == ScaleMode::kTensor ? 0U : index / config.block_size]);
-      output.packed_values[index] = formats::encode_e4m3(matrix.values[index] / scale);
+      const float normalized = matrix.values[index] / scale;
+      output.packed_values[index] =
+          config.rounding == Rounding::kStochastic
+              ? formats::encode_e4m3_stochastic(normalized, config.seed, index)
+              : formats::encode_e4m3(normalized);
     }
     return output;
   }
@@ -79,8 +83,11 @@ QuantizedData quantize_reference(const Matrix &matrix, const Config &config) {
   for (std::size_t index = 0; index < count; ++index) {
     const float local = formats::decode_e4m3(output.local_scales[
         config.scale_mode == ScaleMode::kTensor ? 0U : index / config.block_size]);
-    const std::uint8_t code = formats::encode_e2m1(
-        matrix.values[index] / (output.global_scale * local));
+    const float normalized = matrix.values[index] / (output.global_scale * local);
+    const std::uint8_t code =
+        config.rounding == Rounding::kStochastic
+            ? formats::encode_e2m1_stochastic(normalized, config.seed, index)
+            : formats::encode_e2m1(normalized);
     if ((index & 1U) == 0) output.packed_values[index / 2U] = code;
     else output.packed_values[index / 2U] |= static_cast<std::uint8_t>(code << 4U);
   }

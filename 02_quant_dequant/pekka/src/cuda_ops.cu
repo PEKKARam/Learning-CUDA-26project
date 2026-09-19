@@ -107,13 +107,17 @@ __global__ void nvfp4_local_scale_kernel(const float *values, std::size_t count,
 
 __global__ void mxfp8_quantize_kernel(const float *values, std::size_t count,
                                       std::uint32_t block_size, bool tensor_mode,
-                                      const std::uint8_t *scales,
+                                      const std::uint8_t *scales, int rounding,
+                                      std::uint64_t seed,
                                       std::uint8_t *packed) {
   const std::size_t index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index >= count) return;
   const std::size_t group = tensor_mode ? 0 : index / block_size;
   const float scale = formats::decode_e8m0(scales[group]);
-  packed[index] = formats::encode_e4m3(values[index] / scale);
+  const float normalized = values[index] / scale;
+  packed[index] = rounding == static_cast<int>(Rounding::kStochastic)
+                      ? formats::encode_e4m3_stochastic(normalized, seed, index)
+                      : formats::encode_e4m3(normalized);
 }
 
 // A thread owns a complete byte, so two FP4 elements can never race on a
@@ -122,6 +126,7 @@ __global__ void nvfp4_quantize_kernel(const float *values, std::size_t count,
                                       std::uint32_t block_size, bool tensor_mode,
                                       const std::uint8_t *scales,
                                       const float *global_scale,
+                                      int rounding, std::uint64_t seed,
                                       std::uint8_t *packed) {
   const std::size_t byte_index = blockIdx.x * blockDim.x + threadIdx.x;
   const std::size_t first = byte_index * 2U;
@@ -129,7 +134,10 @@ __global__ void nvfp4_quantize_kernel(const float *values, std::size_t count,
   const auto encode = [&](std::size_t index) {
     const std::size_t group = tensor_mode ? 0 : index / block_size;
     const float denominator = *global_scale * formats::decode_e4m3(scales[group]);
-    return formats::encode_e2m1(values[index] / denominator);
+    const float normalized = values[index] / denominator;
+    return rounding == static_cast<int>(Rounding::kStochastic)
+               ? formats::encode_e2m1_stochastic(normalized, seed, index)
+               : formats::encode_e2m1(normalized);
   };
   std::uint8_t byte = encode(first);
   if (first + 1U < count) byte |= static_cast<std::uint8_t>(encode(first + 1U) << 4U);
@@ -208,7 +216,8 @@ GpuQuantizeResult quantize_gpu(const Matrix &matrix, const Config &config,
       mxfp8_scale_kernel<<<group_blocks, threads>>>(
           values.get(), count, config.block_size, tensor_mode, scales.get(), groups);
       mxfp8_quantize_kernel<<<value_blocks, threads>>>(
-          values.get(), count, config.block_size, tensor_mode, scales.get(), packed.get());
+          values.get(), count, config.block_size, tensor_mode, scales.get(),
+          static_cast<int>(config.rounding), config.seed, packed.get());
     } else {
       check_cuda(cudaMemsetAsync(global_amax.get(), 0, sizeof(float)),
                  "clear global amax");
@@ -220,7 +229,8 @@ GpuQuantizeResult quantize_gpu(const Matrix &matrix, const Config &config,
           scales.get(), groups);
       nvfp4_quantize_kernel<<<packed_blocks, threads>>>(
           values.get(), count, config.block_size, tensor_mode, scales.get(),
-          global_scale.get(), packed.get());
+          global_scale.get(), static_cast<int>(config.rounding), config.seed,
+          packed.get());
     }
   }
   check_cuda(cudaGetLastError(), "quantize kernel launch");

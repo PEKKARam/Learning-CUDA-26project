@@ -113,10 +113,6 @@ void validate_config(const Config &config) {
   if (config.format == Format::kNvfp4 && config.block_size != 16) {
     throw std::runtime_error("nvfp4 v1 requires block_size = 16");
   }
-  if (config.rounding == Rounding::kStochastic) {
-    throw std::runtime_error(
-        "stochastic rounding is reserved by the v1 protocol but not enabled; use nearest");
-  }
 }
 
 } // namespace qd

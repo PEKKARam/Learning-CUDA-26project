@@ -44,5 +44,12 @@ int main() {
   require(encode_e8m0_ceil(1.0F) == 127, "E8M0 exact power");
   require(encode_e8m0_ceil(1.01F) == 128, "E8M0 ceiling");
   require(encode_e8m0_ceil(0.5F) == 126, "E8M0 half");
+  const auto stochastic_a = encode_e4m3_stochastic(0.37F, 20260827, 11);
+  const auto stochastic_b = encode_e4m3_stochastic(0.37F, 20260827, 11);
+  require(stochastic_a == stochastic_b, "stochastic E4M3 reproducibility");
+  require(encode_e4m3_stochastic(1.0F, 20260827, 11) == 0x38,
+          "stochastic exact E4M3 value");
+  require(encode_e2m1_stochastic(1.0F, 20260827, 11) == 2,
+          "stochastic exact E2M1 value");
   std::cout << "format tests passed\n";
 }

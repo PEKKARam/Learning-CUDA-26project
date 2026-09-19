@@ -32,6 +32,8 @@ def main() -> None:
             ("nvfp4_block", "nvfp4", "block", "fp16"),
             ("mxfp8_tensor", "mxfp8", "tensor", "fp32"),
             ("nvfp4_tensor", "nvfp4", "tensor", "bf16"),
+            ("mxfp8_stochastic", "mxfp8", "block", "fp32"),
+            ("nvfp4_stochastic", "nvfp4", "block", "fp32"),
         )
         for config_name, format_name, scale_mode, output_dtype in cases:
             qlow = root / f"{config_name}.qlow"
